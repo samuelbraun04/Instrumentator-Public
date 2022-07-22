@@ -1,4 +1,4 @@
-from BeatMaker import BeatMaker
+from Instrumentator import Instrumentator
 import dawdreamer as daw
 from os import listdir
 from datetime import date
@@ -6,7 +6,7 @@ from time import sleep
 from random import randint
 
 #Make an object solely for getting the input folder
-forInputFolder = BeatMaker(None)
+forInputFolder = Instrumentator(None)
 
 while(1):
     
@@ -16,7 +16,7 @@ while(1):
 
     #Make a beat
     print("----------------------------------------------------\n")
-    bot = BeatMaker(randint(1,4))
+    bot = Instrumentator(randint(1,4))
     beatLocation, beatFileName, stemZipLocation, stemZipFileName = bot.makeBeat()
     print('Beat Created : '+beatFileName+'\n')
     print("----------------------------------------------------\n")

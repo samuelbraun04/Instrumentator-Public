@@ -10,7 +10,7 @@ import dawdreamer as daw
 import numpy as np
 import scipy.io.wavfile
 
-class BeatMaker:
+class Instrumentator:
     def __init__(
             self,
             templateSeed,
@@ -18,7 +18,7 @@ class BeatMaker:
             bufferSize = 512,
         ):
 
-        #Find BeatMaker's location so we can find where our directories are located
+        #Find Instrumentator's location so we can find where our directories are located
         fileLocation = path.abspath(__file__)
 
         #Set variables
