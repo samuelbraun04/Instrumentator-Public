@@ -1,0 +1,15 @@
+PLACEHOLDER
+C#m - 128 BPM.wav
+C#m - 140 BPM.wav
+C#m - 145 BPM.wav
+C#m - 186 BPM.wav
+Dm - 140 BPM (2).wav
+Dm - 140 BPM (3).wav
+Dm - 150 BPM.wav
+D#m - 120 BPM.wav
+D#m - 128 BPM.wav
+D#m - 175 BPM.wav
+Em - 130 BPM.wav
+Em - 140 BPM.wav
+Fm - 144 BPM (2).wav
+F#m - 140 BPM (2).wav
