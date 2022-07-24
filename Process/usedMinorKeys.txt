@@ -13,3 +13,6 @@ Em - 130 BPM.wav
 Em - 140 BPM.wav
 Fm - 144 BPM (2).wav
 F#m - 140 BPM (2).wav
+F#m - 140 BPM.wav
+Bm - 140 BPM.wav
+A#m - 120 BPM.wav

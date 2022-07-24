@@ -14,18 +14,16 @@ while(1):
     today = date.today()
     currentDate = today.strftime("%d/%m/%Y")
 
-    #Make a beat
+    #Make a instrumental
     print("----------------------------------------------------\n")
     bot = Instrumentator(randint(1,4))
-    beatLocation, beatFileName, stemZipLocation, stemZipFileName = bot.makeBeat()
-    print('Beat Created : '+beatFileName+'\n')
+    instrumentalLocation, instrumentalFileName, stemZipLocation, stemZipFileName = bot.makeinstrumental()
+    print('instrumental Created : '+instrumentalFileName+'\n')
     print("----------------------------------------------------\n")
 
-    #Upload 
-    exit()
-    #Update user on status of folders
+    ########THIS PART STILL IN DEVELOPMENT
 
-    #Make the beat and wait till the day changes
+    #Make the instrumental and wait till the day changes
     print("Waiting until the next day to restart program....\n")
     while(currentDate == today.strftime("%d/%m/%Y")):
         sleep(10)
