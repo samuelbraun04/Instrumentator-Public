@@ -1,12 +1,13 @@
 from librosa import load
-from moviepy.editor import AudioFileClip, CompositeAudioClip
-from os import chdir, getcwd, path, listdir, remove, stat, rename
+from moviepy.editor import AudioFileClip
+from os import chdir, path, listdir, remove, stat, rename
+from pushbullet import PushBullet
 from pydub import AudioSegment
 from pyloudness import get_loudness
 from random import randint
 from shutil import move, make_archive, copy
-from time import sleep
 import dawdreamer as daw
+import matplotlib.pyplot as plt
 import numpy as np
 import scipy.io.wavfile
 
@@ -49,9 +50,15 @@ class Instrumentator:
         self.processFolder = self.currentDirectory+'Process'+self.pathConjoiner
         self.inputFolder = self.processFolder+'Input'+self.pathConjoiner
         self.outputFolder = self.processFolder+'Output'+self.pathConjoiner
+        self.imagesFolder = self.currentDirectory+'Images'+self.pathConjoiner
+        self.beatDescriptionTextFile = self.currentDirectory+'Beat Details'+self.pathConjoiner+'beatDescription.txt'
+        self.beatGenresTextFile = self.currentDirectory+'Beat Details'+self.pathConjoiner+'beatGenres.txt'
+        self.beatMoodsTextFile = self.currentDirectory+'Beat Details'+self.pathConjoiner+'beatMoods.txt'
+        self.beatNamesTextFile = self.currentDirectory+'Beat Details'+self.pathConjoiner+'beatNames.txt'
+        self.beatTagsTextFile = self.currentDirectory+'Beat Details'+self.pathConjoiner+'beatTags.txt'
         self.usedMajorKeysTextFile = self.processFolder+'usedMajorKeys.txt'
         self.usedMinorKeysTextFile = self.processFolder+'usedMinorKeys.txt'
-        self.finalInstrumentalsFolder = self.currentDirectory+'Final Instrumentals'+self.pathConjoiner
+        self.finalBeatsFolder = self.currentDirectory+'Final Beats'+self.pathConjoiner
         self.risersFolder = self.currentDirectory+'FX'+self.pathConjoiner+'Risers'+self.pathConjoiner
         self.crashesFolder = self.currentDirectory+'FX'+self.pathConjoiner+'Crashes'+self.pathConjoiner
 
@@ -109,12 +116,12 @@ class Instrumentator:
                     #If the loop hasn't been used yet, use it and add it to used.txt
                     if (loop not in usedFiles):
                         if melodyFileKey in self.trapMajorKeysList:
-                            chosenTrapInstrumental = loop
+                            chosenTrapBeat = loop
                             leave = True
                             open(self.usedMajorKeysTextFile, 'a').write('\n'+str(loop))
                             break
                         if melodyFileKey in self.trapMinorKeysList:
-                            chosenTrapInstrumental = loop
+                            chosenTrapBeat = loop
                             leave = True
                             open(self.usedMinorKeysTextFile, 'a').write('\n'+str(loop))
                             break
@@ -132,7 +139,7 @@ class Instrumentator:
             if counter == len(allLoops):
                 break
 
-        #If counter == allLoops then we've seen all the loops and haven't found one. So reset the used.txt so we can re-use instrumentals
+        #If counter == allLoops then we've seen all the loops and haven't found one. So reset the used.txt so we can re-use beats
         if counter == len(allLoops) and (melodyFileKey in self.majorKeys):
             open(self.usedMajorKeysTextFile, 'w').write('PLACEHOLDER')
             return False
@@ -143,17 +150,17 @@ class Instrumentator:
             
             #Get bpms
             melodyFileBpm = melodyFile[melodyFile.find('-')+1:melodyFile.rfind('B')].strip()
-            trapFileBpm = chosenTrapInstrumental[chosenTrapInstrumental.find('-')+1:chosenTrapInstrumental.rfind('B')].strip()
+            trapFileBpm = chosenTrapBeat[chosenTrapBeat.find('-')+1:chosenTrapBeat.rfind('B')].strip()
 
-            print('Chosen Trap Loop   : '+chosenTrapInstrumental)
+            print('Chosen Trap Loop   : '+chosenTrapBeat)
             print('Chosen Melody Loop : '+melodyFile+'\n')
 
             if (melodyFileKey in self.trapMajorKeysList):
                 keyGenre = 'Major'
-                return chosenTrapInstrumental, melodyFile, self.majorKeys[(instance) % len(self.minorKeys)], initialKey, keyGenre, melodyFileBpm, trapFileBpm
+                return chosenTrapBeat, melodyFile, self.majorKeys[(instance) % len(self.minorKeys)], initialKey, keyGenre, melodyFileBpm, trapFileBpm
             else:
                 keyGenre = 'Minor'
-                return chosenTrapInstrumental, melodyFile, self.minorKeys[(instance) % len(self.minorKeys)], initialKey, keyGenre, melodyFileBpm, trapFileBpm
+                return chosenTrapBeat, melodyFile, self.minorKeys[(instance) % len(self.minorKeys)], initialKey, keyGenre, melodyFileBpm, trapFileBpm
 
     def transposeMelodyAndBpm(self, file, newKey, oldKey, name, melodyBpm=1, trapBpm=1, justTranspose=False, setTransposeValue=0, stringValue=''):
         
@@ -200,9 +207,9 @@ class Instrumentator:
         audio = self.engine.get_audio()
         scipy.io.wavfile.write(self.outputFolder+name+'.wav', self.sampleRate, audio.transpose())
 
-    def makeInstrumental(self):
+    def makeBeat(self):
 
-        print("Constructing instrumental....\n")
+        print("Constructing beat....\n")
 
         #Get the melody and drum file
         returnValue = False
@@ -210,37 +217,39 @@ class Instrumentator:
             returnValue = self.getMelodyAndDrums()
         
         #Get the variables
-        trapInstrumental, melody, keyTheMelodyShouldBeTurnedInto, initialMelodyKey, keyGenre, melodyFileBpm, trapFileBpm = returnValue
+        trapBeat, melody, keyTheMelodyShouldBeTurnedInto, initialMelodyKey, keyGenre, melodyFileBpm, trapFileBpm = returnValue
         
         #Set the variables
-        trapInstrumentalFile = trapInstrumental
-        trapInstrumental = self.currentDirectory+'Drum Loops'+self.pathConjoiner+keyGenre+self.pathConjoiner+trapInstrumental
-        newTrapInstrumental = self.outputFolder+'Trap Instrumental - '+trapInstrumentalFile
+        trapBeatFile = trapBeat
+        trapBeat = self.currentDirectory+'Drum Loops'+self.pathConjoiner+keyGenre+self.pathConjoiner+trapBeat
+        newTrapBeat = self.outputFolder+'Trap Beat - '+trapBeatFile
         melody = self.inputFolder+melody
+        melodyLoudness = (-7,-9)
+        trapLoudness = 0
 
-        #Copy trap instrumental into folder where we'll be doing our work
-        copy(trapInstrumental, self.outputFolder)
-        rename(self.outputFolder+trapInstrumentalFile, newTrapInstrumental)
+        #Copy trap beat into folder where we'll be doing our work
+        copy(trapBeat, self.outputFolder)
+        rename(self.outputFolder+trapBeatFile, newTrapBeat)
 
-        #Set trap instrumental to 1, trim it and cut off any clicks that may be there
-        newTrapInstrumental = self.checkAndChangeVolume(newTrapInstrumental, wantedVolume=0.8)
-        newTrapInstrumental = self.cutAndOrFade(newTrapInstrumental, trapFileBpm)
+        #Set trap beat to 1, trim it and cut off any clicks that may be there
+        newTrapBeat = self.checkAndChangeVolume(newTrapBeat, wantedVolume=trapLoudness) ##################
+        newTrapBeat = self.trimAudio(newTrapBeat, trapFileBpm)
 
         #Transpose, mix, clip, and fade melody
         transposedMelody = self.transposeMelodyAndBpm(melody, keyTheMelodyShouldBeTurnedInto, initialMelodyKey, 'Melody - '+keyTheMelodyShouldBeTurnedInto+' '+trapFileBpm+' BPM', melodyBpm=melodyFileBpm, trapBpm=trapFileBpm,)
-        transposedMelody = self.checkAndChangeVolume(transposedMelody, volumeRange=(-7,-9))
-        transposedMelody = self.cutAndOrFade(transposedMelody, trapFileBpm)
+        transposedMelody = self.checkAndChangeVolume(transposedMelody, volumeRange=melodyLoudness)
+        transposedMelody = self.trimAudio(transposedMelody, trapFileBpm)
 
-        #Make and export clip with melody and instrumental playing
-        transposedMelodyAndTrapInstrumental = self.mergeAudioFiles([transposedMelody, newTrapInstrumental], 'Melody + Trap Instrumental')
+        #Make and export clip with melody and beat playing
+        transposedMelodyAndTrapBeat = self.mergeTwoAudioFiles([transposedMelody, newTrapBeat], 'Melody + Trap Beat')
 
         if self.templateSeed == 1:
 
             #Tranpose the melody 12 semitones up and export the clip
             raisedTransposedMelody = self.transposeMelodyAndBpm(transposedMelody, keyTheMelodyShouldBeTurnedInto, keyTheMelodyShouldBeTurnedInto, 'Melody Raised 12 Semitones', justTranspose=True, setTransposeValue=12)
 
-            #Make and export clip with melody and instrumental playing
-            raisedMelodyAndTrapInstrumental = self.mergeAudioFiles([raisedTransposedMelody, newTrapInstrumental], 'Melody Raised 12 Semitones + Trap Instrumental')
+            #Make and export clip with melody and beat playing
+            raisedMelodyAndTrapBeat = self.mergeTwoAudioFiles([raisedTransposedMelody, newTrapBeat], 'Melody Raised 12 Semitones + Trap Beat')
 
             #Add riser to end of melody
             transposedMelodyWithRiser = self.addFX(transposedMelody, sound='Riser', position='Back')
@@ -248,25 +257,22 @@ class Instrumentator:
             #Add crash to beginning of raised melody
             raisedTransposedMelodyWithCrash = self.addFX(raisedTransposedMelody, sound='Crash', position='Front')
 
-            #Concatenate clips in a particular order to make the instrumental structure (export this file)
-            preCompressionFinalInstrumental = self.instrumentalStructure([transposedMelodyWithRiser, transposedMelodyAndTrapInstrumental, raisedMelodyAndTrapInstrumental, transposedMelodyWithRiser, transposedMelodyAndTrapInstrumental, raisedMelodyAndTrapInstrumental, raisedTransposedMelodyWithCrash], 'Pre-Compression Instrumental', trapFileBpm)
-            
-            #Take final instrumental structure and compress it. Instrumental has been made.
-            self.compressAudio(preCompressionFinalInstrumental, trapInstrumentalFile[:-4]+' FINAL BEAT')
+            #Concatenate clips in a particular order to make the beat structure (export this file)
+            preCompressionFinalBeat = self.beatStructure([transposedMelodyWithRiser, transposedMelodyAndTrapBeat, raisedMelodyAndTrapBeat, transposedMelodyWithRiser, transposedMelodyAndTrapBeat, raisedMelodyAndTrapBeat, transposedMelodyWithRiser, transposedMelodyAndTrapBeat, raisedMelodyAndTrapBeat, raisedTransposedMelodyWithCrash], 'Pre-Compression Beat', trapFileBpm)
         
         if self.templateSeed == 2:
 
             #Tranpose the melody 12 semitones down
             loweredTransposedMelody = self.transposeMelodyAndBpm(transposedMelody, keyTheMelodyShouldBeTurnedInto, keyTheMelodyShouldBeTurnedInto, 'Melody Lowered 12 Semitones', justTranspose=True, setTransposeValue=-12)
-            loweredTransposedMelody = self.checkAndChangeVolume(loweredTransposedMelody, volumeRange=(-7,-9))
-            loweredTransposedMelody = self.cutAndOrFade(loweredTransposedMelody, trapFileBpm)
+            loweredTransposedMelody = self.checkAndChangeVolume(loweredTransposedMelody, volumeRange=melodyLoudness)
+            loweredTransposedMelody = self.trimAudio(loweredTransposedMelody, trapFileBpm)
             
             #Transpose the melody 12 semitones up
             raisedTransposedMelody = self.transposeMelodyAndBpm(transposedMelody, keyTheMelodyShouldBeTurnedInto, keyTheMelodyShouldBeTurnedInto, 'Melody Raised 12 Semitones', justTranspose=True, setTransposeValue=12)
-            raisedTransposedMelody = self.cutAndOrFade(raisedTransposedMelody, trapFileBpm)
+            raisedTransposedMelody = self.trimAudio(raisedTransposedMelody, trapFileBpm)
 
-            #Make and export clip with melody and instrumental playing
-            raisedMelodyAndTrapInstrumental = self.mergeAudioFiles([raisedTransposedMelody, newTrapInstrumental], 'Melody Raised 12 Semitones + Trap Instrumental')
+            #Make and export clip with melody and beat playing
+            raisedMelodyAndTrapBeat = self.mergeTwoAudioFiles([raisedTransposedMelody, newTrapBeat], 'Melody Raised 12 Semitones + Trap Beat')
 
             #Add riser to end of lowered melody
             loweredTransposedMelodyWithRiser = self.addFX(loweredTransposedMelody, sound='Riser', position='Back')
@@ -274,132 +280,219 @@ class Instrumentator:
             #Add riser to end of normal melody
             transposedMelodyWithRiser = self.addFX(transposedMelody, sound='Riser', position='Back')
 
-            #Add fx to instrumental
-            trapInstrumentalWithFX = self.addFX(newTrapInstrumental, sound='Crash', position='Front')
+            #Add fx to beat
+            trapBeatWithFX = self.addFX(newTrapBeat, sound='Crash', position='Front')
 
-            #Concatenate clips in a particular order to make the instrumental structure (export this file)
-            preCompressionFinalInstrumental = self.instrumentalStructure([loweredTransposedMelodyWithRiser, transposedMelodyAndTrapInstrumental, raisedMelodyAndTrapInstrumental, transposedMelodyWithRiser, transposedMelodyAndTrapInstrumental, raisedMelodyAndTrapInstrumental, loweredTransposedMelodyWithRiser, trapInstrumentalWithFX], 'Pre-Compression Instrumental', trapFileBpm)
-
-            self.compressAudio(preCompressionFinalInstrumental, trapInstrumentalFile[:-4]+' FINAL BEAT')
+            #Concatenate clips in a particular order to make the beat structure (export this file)
+            preCompressionFinalBeat = self.beatStructure([loweredTransposedMelodyWithRiser, transposedMelodyAndTrapBeat, raisedMelodyAndTrapBeat, transposedMelodyWithRiser, transposedMelodyAndTrapBeat, raisedMelodyAndTrapBeat, loweredTransposedMelodyWithRiser, transposedMelodyAndTrapBeat, raisedMelodyAndTrapBeat, loweredTransposedMelodyWithRiser, trapBeatWithFX], 'Pre-Compression Beat', trapFileBpm)
         
         elif self.templateSeed == 3:
 
             #Tranpose the melody 12 semitones down
             loweredTransposedMelody = self.transposeMelodyAndBpm(transposedMelody, keyTheMelodyShouldBeTurnedInto, keyTheMelodyShouldBeTurnedInto, 'Melody Lowered 12 Semitones', justTranspose=True, setTransposeValue=-12)
-            loweredTransposedMelody = self.checkAndChangeVolume(loweredTransposedMelody, volumeRange=(-7,-9))
-            loweredTransposedMelody = self.cutAndOrFade(loweredTransposedMelody, trapFileBpm)
+            loweredTransposedMelody = self.checkAndChangeVolume(loweredTransposedMelody, volumeRange=melodyLoudness)
+            loweredTransposedMelody = self.trimAudio(loweredTransposedMelody, trapFileBpm)
 
             #Tranpose the melody 12 semitones up
             raisedTransposedMelody = self.transposeMelodyAndBpm(transposedMelody, keyTheMelodyShouldBeTurnedInto, keyTheMelodyShouldBeTurnedInto, 'Melody Raised 12 Semitones', justTranspose=True, setTransposeValue=12)
-            raisedTransposedMelody = self.checkAndChangeVolume(raisedTransposedMelody, volumeRange=(-7,-9))
-            raisedTransposedMelody = self.cutAndOrFade(raisedTransposedMelody, trapFileBpm)
+            raisedTransposedMelody = self.checkAndChangeVolume(raisedTransposedMelody, volumeRange=melodyLoudness)
+            raisedTransposedMelody = self.trimAudio(raisedTransposedMelody, trapFileBpm)
 
-            #Filter the trapinstrumental
-            filteredTrapInstrumental = self.filterAudio(newTrapInstrumental, 'Filtered Trap Instrumental', automate=True, automateType='Exponential')
+            #Filter the trapbeat
+            filteredTrapBeat = self.filterAudio(newTrapBeat, 'Filtered Trap Beat', automate=True, automateType='Exponential')
 
             #Add riser to melody
             loweredTransposedMelodyWithRiser = self.addFX(loweredTransposedMelody, sound='Riser', position='Back')
 
-            #Make and export clip with melody and instrumental playing
-            raisedMelodyAndTrapInstrumental = self.mergeAudioFiles([raisedTransposedMelody, newTrapInstrumental], 'Melody Raised 12 Semitones + Trap Instrumental')
+            #Make and export clip with melody and beat playing
+            raisedMelodyAndTrapBeat = self.mergeTwoAudioFiles([raisedTransposedMelody, newTrapBeat], 'Melody Raised 12 Semitones + Trap Beat')
 
             #Melody with crash at the beginning and riser at the end
             transposedMelodyWithFX = self.addFX(transposedMelody, sound='Crash', position='Front')
             transposedMelodyWithFX = self.addFX(transposedMelodyWithFX, sound='Riser', position='Back')
 
-            #Trap instrumental with crash at the beginning
-            trapInstrumentalWithFX = self.addFX(newTrapInstrumental, sound='Crash', position='Front')
+            #Trap beat with crash at the beginning
+            trapBeatWithFX = self.addFX(newTrapBeat, sound='Crash', position='Front')
 
-            #Concatenate clips in a particular order to make the instrumental structure (export this file)
-            preCompressionFinalInstrumental = self.instrumentalStructure([filteredTrapInstrumental, transposedMelodyWithFX, transposedMelodyAndTrapInstrumental, loweredTransposedMelodyWithRiser, transposedMelodyAndTrapInstrumental, raisedMelodyAndTrapInstrumental, loweredTransposedMelodyWithRiser, trapInstrumentalWithFX], 'Pre-Compression Instrumental', trapFileBpm)
-
-            self.compressAudio(preCompressionFinalInstrumental, trapInstrumentalFile[:-4]+' FINAL BEAT')
+            #Concatenate clips in a particular order to make the beat structure (export this file)
+            preCompressionFinalBeat = self.beatStructure([filteredTrapBeat, transposedMelodyWithFX, transposedMelodyAndTrapBeat, raisedMelodyAndTrapBeat, loweredTransposedMelodyWithRiser, transposedMelodyAndTrapBeat, raisedMelodyAndTrapBeat, loweredTransposedMelodyWithRiser, transposedMelodyAndTrapBeat, raisedMelodyAndTrapBeat, trapBeatWithFX], 'Pre-Compression Beat', trapFileBpm)
 
         elif self.templateSeed == 4:
 
             #Tranpose the melody 12 semitones up
             raisedTransposedMelody = self.transposeMelodyAndBpm(transposedMelody, keyTheMelodyShouldBeTurnedInto, keyTheMelodyShouldBeTurnedInto, 'Melody Raised 12 Semitones', justTranspose=True, setTransposeValue=12)
-            raisedTransposedMelody = self.checkAndChangeVolume(raisedTransposedMelody, volumeRange=(-7,-9))
-            raisedTransposedMelody = self.cutAndOrFade(raisedTransposedMelody, trapFileBpm)
+            raisedTransposedMelody = self.checkAndChangeVolume(raisedTransposedMelody, volumeRange=melodyLoudness)
+            raisedTransposedMelody = self.trimAudio(raisedTransposedMelody, trapFileBpm)
 
             #Tranpose the melody 12 semitones down
             loweredTransposedMelody = self.transposeMelodyAndBpm(transposedMelody, keyTheMelodyShouldBeTurnedInto, keyTheMelodyShouldBeTurnedInto, 'Melody Lowered 12 Semitones', justTranspose=True, setTransposeValue=-12)
-            loweredTransposedMelody = self.checkAndChangeVolume(loweredTransposedMelody, volumeRange=(-7,-9))
-            loweredTransposedMelody = self.cutAndOrFade(loweredTransposedMelody, trapFileBpm)
+            loweredTransposedMelody = self.checkAndChangeVolume(loweredTransposedMelody, volumeRange=melodyLoudness)
+            loweredTransposedMelody = self.trimAudio(loweredTransposedMelody, trapFileBpm)
 
-            #Raised melody with trap instrumental
-            raisedMelodyAndTrapInstrumental = self.mergeAudioFiles([raisedTransposedMelody, newTrapInstrumental], 'Raised Melody + Trap Instrumental')
+            #Raised melody with trap beat
+            raisedMelodyAndTrapBeat = self.mergeTwoAudioFiles([raisedTransposedMelody, newTrapBeat], 'Raised Melody + Trap Beat')
 
             #Add reverb to melody
-            transposedMelodyWithReverb = self.addReverb(transposedMelody, dry_level=0.3)
+            transposedMelodyWithReverb = self.addReverb(transposedMelody, 'Transposed Melody with Reverb', dry_level=0.3)
 
             #Add FX to reverbed melody
             transposedMelodyWithReverbWithFX = self.addFX(transposedMelodyWithReverb, sound='Riser', position='Back')
-            transposedMelodyWithReverbWithFX = self.checkAndChangeVolume(transposedMelodyWithReverbWithFX, volumeRange=(-7,-9))
+            transposedMelodyWithReverbWithFX = self.checkAndChangeVolume(transposedMelodyWithReverbWithFX, volumeRange=melodyLoudness)
 
-            #Trap instrumental with crash at the beginning
-            trapInstrumentalWithFX = self.addFX(newTrapInstrumental, sound='Crash', position='Front')
+            #Trap beat with crash at the beginning
+            trapBeatWithFX = self.addFX(newTrapBeat, sound='Crash', position='Front')
 
-            #Concatenate clips in a particular order to make the instrumental structure (export this file)
-            preCompressionFinalInstrumental = self.instrumentalStructure([transposedMelodyWithReverbWithFX, transposedMelodyAndTrapInstrumental, raisedMelodyAndTrapInstrumental, transposedMelodyWithReverbWithFX, transposedMelodyAndTrapInstrumental, raisedMelodyAndTrapInstrumental, loweredTransposedMelody, trapInstrumentalWithFX], 'Pre-Compression Instrumental', trapFileBpm)
+            #Concatenate clips in a particular order to make the beat structure (export this file)
+            preCompressionFinalBeat = self.beatStructure([transposedMelodyWithReverbWithFX, transposedMelodyAndTrapBeat, raisedMelodyAndTrapBeat, transposedMelodyWithReverbWithFX, transposedMelodyAndTrapBeat, raisedMelodyAndTrapBeat, transposedMelodyWithReverbWithFX, transposedMelodyAndTrapBeat, raisedMelodyAndTrapBeat, loweredTransposedMelody, trapBeatWithFX], 'Pre-Compression Beat', trapFileBpm)
 
-            self.compressAudio(preCompressionFinalInstrumental, trapInstrumentalFile[:-4]+' FINAL BEAT')
+        elif self.templateSeed == 5:
+    
+            #Tranpose the melody 12 semitones up
+            raisedTransposedMelody = self.transposeMelodyAndBpm(transposedMelody, keyTheMelodyShouldBeTurnedInto, keyTheMelodyShouldBeTurnedInto, 'Melody Raised 12 Semitones', justTranspose=True, setTransposeValue=12)
+            raisedTransposedMelody = self.checkAndChangeVolume(raisedTransposedMelody, volumeRange=melodyLoudness)
+            raisedTransposedMelody = self.trimAudio(raisedTransposedMelody, trapFileBpm)
 
-        #Removed the used melody
-        print('\nRemoved Melody : '+melody+'\n')
-        remove(melody)
+            #Raised melody with trap beat
+            raisedMelodyAndTrapBeat = self.mergeTwoAudioFiles([raisedTransposedMelody, newTrapBeat], 'Raised Melody + Trap Beat')
+
+            #Add reverb to trap beat
+            trapBeatWithReverb = self.addReverb(newTrapBeat, 'Trap Beat with Reverb and Faded In', dry_level=0.2, wet_level=0.5)
+
+            #Fade in reverbed trap beat
+            trapBeatWithReverbAndFadedIn = self.fadeAudio(trapBeatWithReverb, 'Trap Beat with Reverb and Faded In', 'In')
+            trapBeatWithReverbAndFadedIn = self.checkAndChangeVolume(trapBeatWithReverbAndFadedIn, wantedVolume=-6)
+
+            #Fade out reverbed trap beat
+            trapBeatWithReverbAndFadedOut = self.fadeAudio(trapBeatWithReverb, 'Trap Beat with Reverb and Faded Out' ,'Out')
+            trapBeatWithReverbAndFadedOut = self.checkAndChangeVolume(trapBeatWithReverbAndFadedOut, wantedVolume=-6)
+
+            #Add FX to reverbed trapbeat
+            trapBeatWithReverbAndFadedInWithFx = self.addFX(trapBeatWithReverbAndFadedIn, sound='Riser', position='Back')
+
+            #Add FX to reverbed trapbeat
+            trapBeatWithReverbAndFadedOutWithFx = self.addFX(trapBeatWithReverbAndFadedOut, sound='Crash', position='Front')
+
+            #Filter the melody
+            filteredMelody = self.filterAudio(transposedMelody, 'Filtered Melody', automate=True, automateType='Exponential')
+
+            #Filtered melody with riser
+            filteredMelodyWithFX = self.addFX(filteredMelody, sound='Riser', position='Back')
+
+            #Concatenate clips in a particular order to make the beat structure (export this file)
+            preCompressionFinalBeat = self.beatStructure([trapBeatWithReverbAndFadedInWithFx, filteredMelodyWithFX, transposedMelodyAndTrapBeat, raisedMelodyAndTrapBeat, filteredMelodyWithFX, transposedMelodyAndTrapBeat, raisedMelodyAndTrapBeat, filteredMelodyWithFX, transposedMelodyAndTrapBeat, raisedMelodyAndTrapBeat, filteredMelodyWithFX, trapBeatWithReverbAndFadedOutWithFx], 'Pre-Compression Beat', trapFileBpm)
+
+        elif self.templateSeed == 6:
+        
+            #Tranpose the melody 12 semitones up
+            raisedTransposedMelody = self.transposeMelodyAndBpm(transposedMelody, keyTheMelodyShouldBeTurnedInto, keyTheMelodyShouldBeTurnedInto, 'Melody Raised 12 Semitones', justTranspose=True, setTransposeValue=12)
+            raisedTransposedMelody = self.checkAndChangeVolume(raisedTransposedMelody, volumeRange=melodyLoudness)
+            raisedTransposedMelody = self.trimAudio(raisedTransposedMelody, trapFileBpm)
+
+            #Raised melody with trap beat
+            raisedMelodyAndTrapBeat = self.mergeTwoAudioFiles([raisedTransposedMelody, newTrapBeat], 'Raised Melody + Trap Beat')
+
+            #Reverse melody
+            reversedMelody = self.reverseAudio(transposedMelody, 'Reversed Melody')
+
+            #Reverse melody with Riser
+            reversedMelodyWithRiser = self.addFX(reversedMelody, sound='Riser', position='Back')
+
+            #Reverse trap beat
+            reversedBeat = self.reverseAudio(newTrapBeat, 'Reversed Beat')
+            reversedBeatWithReverb = self.addReverb(reversedBeat, 'Reversed Beat with Reverb', dry_level=0.9, wet_level=0.2)
+            reversedBeatWithReverb = self.checkAndChangeVolume(reversedBeatWithReverb, wantedVolume=-6)
+            
+            #Reverse trap beat with FX
+            reversedBeatWithCrash = self.addFX(reversedBeatWithReverb, sound='Crash', position='Front')
+
+            #Filter the melody
+            filteredMelody = self.filterAudio(transposedMelody, 'Filtered Melody', automate=True, automateType='Exponential')
+
+            #Filtered melody with riser
+            filteredMelodyWithFX = self.addFX(filteredMelody, sound='Riser', position='Back')
+
+            #Concatenate clips in a particular order to make the beat structure (export this file)
+            preCompressionFinalBeat = self.beatStructure([reversedMelodyWithRiser, transposedMelodyAndTrapBeat, raisedMelodyAndTrapBeat, filteredMelodyWithFX, transposedMelodyAndTrapBeat, raisedMelodyAndTrapBeat, reversedMelodyWithRiser, transposedMelodyAndTrapBeat, raisedMelodyAndTrapBeat, filteredMelodyWithFX, reversedBeatWithCrash], 'Pre-Compression Beat', trapFileBpm)
+
+        #Compress beat
+        self.compressAudio(preCompressionFinalBeat, trapBeatFile[:-4]+' FINAL BEAT')
 
         nameAdd = 0
         while(1):
             try:
                 if nameAdd == 0:
                     #Put the files in a zip file
-                    chdir(self.finalInstrumentalsFolder)
-                    make_archive(trapInstrumentalFile[:-4]+' FINAL BEAT', 'zip', self.outputFolder)
+                    chdir(self.finalBeatsFolder)
+                    if 'placeholder.txt' in listdir(self.outputFolder):
+                        remove(self.outputFolder+'placeholder.txt')
+                    make_archive(trapBeatFile[:-4]+' FINAL BEAT', 'zip', self.outputFolder)
 
-                    #Move final instrumental and used melody to separate directories
+                    #Move final beat and used melody to separate directories
                     chdir(self.outputFolder)
-                    move(trapInstrumentalFile[:-4]+' FINAL BEAT.wav', self.finalInstrumentalsFolder)
+                    move(trapBeatFile[:-4]+' FINAL BEAT.wav', self.finalBeatsFolder)
                 else:
-                    chdir(self.finalInstrumentalsFolder)
-                    make_archive(trapInstrumentalFile[:-4]+' '+str(nameAdd)+' FINAL BEAT', 'zip', self.outputFolder)
+                    if 'placeholder.txt' in listdir(self.outputFolder):
+                        remove(self.outputFolder+'placeholder.txt')
+                    chdir(self.finalBeatsFolder)
+                    make_archive(trapBeatFile[:-4]+' '+str(nameAdd)+' FINAL BEAT', 'zip', self.outputFolder)
                     
                     chdir(self.outputFolder)
-                    rename(trapInstrumentalFile[:-4]+' '+str(nameAdd-1)+' FINAL BEAT.wav', trapInstrumentalFile[:-4]+' '+str(nameAdd)+'FINAL BEAT.wav')
-                    move(trapInstrumentalFile[:-4]+' '+str(nameAdd)+' FINAL BEAT.wav', self.finalInstrumentalsFolder)
+                    if nameAdd == 1:
+                        rename(trapBeatFile[:-4]+' FINAL BEAT.wav', trapBeatFile[:-4]+' '+str(nameAdd)+' FINAL BEAT.wav')
+                        move(trapBeatFile[:-4]+' '+str(nameAdd)+' FINAL BEAT.wav', self.finalBeatsFolder)
+                    else:
+                        rename(trapBeatFile[:-4]+' '+str(nameAdd-1)+' FINAL BEAT.wav', trapBeatFile[:-4]+' '+str(nameAdd)+' FINAL BEAT.wav')
+                        move(trapBeatFile[:-4]+' '+str(nameAdd)+' FINAL BEAT.wav', self.finalBeatsFolder)
                 break
-            except Exception:
+            except Exception as e:
+                print(e)
                 nameAdd = nameAdd+1
 
         #Remove all the by-product files
         chdir(self.outputFolder)
         for file in listdir(self.outputFolder):
             remove(file)
-
-        #Removed the used melody
-        print('\nRemoved Melody : '+melody+'\n')
-        # remove(melody)
+        open('placeholder.txt', 'x')
 
         #Return the used melody
-        return self.outputFolder+trapInstrumentalFile[:-4]+' FINAL BEAT.wav', trapInstrumentalFile[:-4]+' FINAL BEAT.wav', self.outputFolder+trapInstrumentalFile[:-4]+' FINAL BEAT.zip', trapInstrumentalFile[:-4]+' FINAL BEAT.zip'
+        return melody, self.finalBeatsFolder+trapBeatFile[:-4]+' FINAL BEAT.wav', trapBeatFile[:-4]+' FINAL BEAT.wav', self.finalBeatsFolder+trapBeatFile[:-4]+' FINAL BEAT.zip', trapFileBpm, keyTheMelodyShouldBeTurnedInto
 
-    def mergeAudioFiles(self, files, name):
+    def fadeAudio(self, file, name, type):
+
+        audioFile = AudioSegment.from_wav(file)
+
+        if type=='In':
+            audioFile = audioFile.fade_in(duration=round(audioFile.duration_seconds*1000))
+        elif type=='Out':
+            audioFile = audioFile.fade_out(duration=round(audioFile.duration_seconds*1000))
+        audioFile.export(self.outputFolder+name+'.wav', format='wav')
+        return (self.outputFolder+name+'.wav')
+
+    def reverseAudio(self, file, name):
+
+        audioFile = AudioSegment.from_wav(file)
+        audioFile = audioFile.reverse()
+        audioFile.export(self.outputFolder+name+'.wav', format='wav')
+        return (self.outputFolder+name+'.wav')
+
+    def mergeTwoAudioFiles(self, files, name):
         
-        audioClipFiles = []
-        for file in files:
-            audioClipFiles.append(AudioFileClip(file))
-        
-        CompositeAudioClip(audioClipFiles).write_audiofile(self.outputFolder+name+'.wav', fps=44100, codec='pcm_s32le')
+        audio1 = AudioSegment.from_wav(files[0])
+        audio2 = AudioSegment.from_wav(files[1])
+
+        overlay = audio1.overlay(audio2)
+        overlay.export(self.outputFolder+name+'.wav', 'wav')
 
         return (self.outputFolder+name+'.wav')
 
-    def instrumentalStructure(self, files, name, bpm):
-        
-        instrumentalsPerEightBars = 32
+    def beatStructure(self, files, name, bpm):
 
-        fullLength = ((instrumentalsPerEightBars*len(files))/int(bpm))*60*1000
+        fullLength = ((32*len(files))/int(bpm))*60000
+        beatFile = AudioSegment.silent(duration=fullLength)
 
-        instrumentalFile = AudioSegment.silent(duration=fullLength)
+        filesWithoutDuplicates = [*set(files)]
+        for declickMe in filesWithoutDuplicates:
+            self.removeClicks(declickMe)
 
         counter = 0
         for file in files:
@@ -409,10 +502,10 @@ class Instrumentator:
             elif len(soundFile) > fullLength/len(files):
                 soundFile = soundFile[:fullLength/len(files)]
             
-            instrumentalFile = instrumentalFile.overlay(soundFile, position=(fullLength/len(files))*counter)
+            beatFile = beatFile.overlay(soundFile, position=(fullLength/len(files))*counter)
             counter+=1
         
-        instrumentalFile.export(self.outputFolder+name+'.wav', 'wav')
+        beatFile.export(self.outputFolder+name+'.wav', 'wav')
 
         return (self.outputFolder+name+'.wav')
 
@@ -420,12 +513,19 @@ class Instrumentator:
 
         playback_processor = self.engine.make_playback_processor("playback", self.loadAudioFile(file))
 
-        soft_clipper = self.engine.make_plugin_processor("my_soft_clipper", self.pluginFolder+self.pathConjoiner+'Initial Clipper.dll')
-        soft_clipper.set_parameter(0, 1.0) #Threshold
-        soft_clipper.set_parameter(1, 0.5) #Input gain
-        soft_clipper.set_parameter(2, 0.0) #Positive saturation
-        soft_clipper.set_parameter(3, 0.0) #Negative saturation
-        soft_clipper.set_parameter(4, 0.0) #Saturate (0.0==False, 1.0==True)
+        # soft_clipper = self.engine.make_plugin_processor("my_soft_clipper", self.pluginFolder+'inv_compressor.so')
+        # soft_clipper.set_parameter(0, 1.0) #Threshold
+        # soft_clipper.set_parameter(1, 0.5) #Input gain
+        # soft_clipper.set_parameter(2, 0.0) #Positive saturation
+        # soft_clipper.set_parameter(3, 0.0) #Negative saturation
+        # soft_clipper.set_parameter(4, 0.0) #Saturate (0.0==False, 1.0==True)
+
+        threshold = -0.1 # dB level of threshold
+        ratio = 3. # greater than or equal to 1.
+        attack = 25. # attack of compressor in milliseconds
+        release = 25. # release of compressor in milliseconds
+
+        soft_clipper = self.engine.make_compressor_processor("my_compressor", threshold, ratio, attack, release)
         
         graph = [
             (playback_processor, []),
@@ -447,7 +547,7 @@ class Instrumentator:
         filter_processor.mode = 'low'
 
         if automate == True:
-            freq = self.createAutomationSlope(file, automateType)
+            freq = self.createAutomationSlope(file, automateType, remapType='hZ')
             filter_processor.set_automation("freq", freq)
 
         graph = [
@@ -460,7 +560,7 @@ class Instrumentator:
         #Return the new file
         return (self.outputFolder+name+'.wav')
 
-    def createAutomationSlope(self, file, slopeType):
+    def createAutomationSlope(self, file, slopeType, remapType=False):
 
         num_samples = AudioSegment.from_wav(file).duration_seconds * self.sampleRate
         a = np.linspace(0, 1, num=int(num_samples), endpoint=True)
@@ -469,10 +569,18 @@ class Instrumentator:
 
         if slopeType == 'Exponential':
             c = (b-1)/(5*base-1)
-        if slopeType == 'Linear':
+        elif slopeType == 'Linear':
             c = a
+        elif slopeType =='Negative Exponential':
+            c = -(b-1)/(5*base-1)
+        elif slopeType == 'Negative Linear':
+            c = -a
 
-        return 200. + (20000-200.)*c
+        if remapType == False:
+            return c
+        else:
+            if remapType == 'hZ':
+                return 200. + (20000-200.)*c   
 
     def checkAndChangeVolume(self, file, wantedVolume=False, volumeRange=False):
 
@@ -481,7 +589,6 @@ class Instrumentator:
         print(file[file.rfind(self.pathConjoiner)+1:-4]+"'s Old Peak : "+str(peak))
 
         #If user set a specific db to be set to, set the min and max to that loudness
-        
         if volumeRange == False:
             maxVolume = wantedVolume
             minVolume = wantedVolume
@@ -509,7 +616,7 @@ class Instrumentator:
         #Return the file. It's the same as the one that was passed.
         return file
     
-    def cutAndOrFade(self, file, bpm, fade=False, fadeNumber=128, fadeType='Both'):
+    def trimAudio(self, file, bpm, fade=False, fadeNumber=128, fadeType='Both'):
         
         #Get the file
         pydubFile = AudioSegment.from_wav(file)
@@ -520,15 +627,6 @@ class Instrumentator:
         elif pydubFile.duration_seconds < ((32/int(bpm))*60):
             difference = ((32/int(bpm))*60)*1000 - pydubFile.duration_seconds*1000
             pydubFile = pydubFile+AudioSegment.silent(duration=difference)
-
-        #Fade the audio if specified
-        if fade == True:
-            if fadeType=='Both':
-                pydubFile = pydubFile.fade_in(round((pydubFile.duration_seconds*1000)/fadeNumber)).fade_out(round((pydubFile.duration_seconds*1000)/fadeNumber))
-            if fadeType=='In':
-                pydubFile = pydubFile.fade_in(round((pydubFile.duration_seconds*1000)/fadeNumber))
-            if fadeType=='Out':
-                pydubFile = pydubFile.fade_out(round((pydubFile.duration_seconds*1000)/fadeNumber))
         
         #Export and return the file
         pydubFile.export(file, format="wav")
@@ -570,10 +668,11 @@ class Instrumentator:
         #Return the edited sound
         return file1[:-4]+' with '+sound+'.wav'
     
-    def addReverb(self, file, room_size=0.5, damping=0.5, wet_level=0.33, dry_level=0.4, width=1.):
-        playback_processor = self.engine.make_playback_processor("playback", self.loadAudioFile(file))
+    def addReverb(self, file, name, room_size=0.5, damping=0.5, wet_level=0.33, dry_level=0.4, width=1.):
 
-        reverb_processor = self.engine.make_reverb_processor("my_reverb", room_size, damping, wet_level, dry_level, width)
+        playback_processor = self.engine.make_playback_processor("song", self.loadAudioFile(file))
+
+        reverb_processor = self.engine.make_reverb_processor("my_reverb")
         reverb_processor.room_size = room_size
         reverb_processor.damping = damping
         reverb_processor.wet_level = wet_level
@@ -582,9 +681,38 @@ class Instrumentator:
 
         graph = [
             (playback_processor, []),
-            (reverb_processor, ["playback"])
+            (reverb_processor, ["song"])
         ]
 
-        self.exportGraphAsWav(graph, file, file[file.rfind(self.pathConjoiner):][:-4]+' with Reverb')
+        self.exportGraphAsWav(graph, file, name)
 
-        return (file[:-4]+' with Reverb.wav')
+        return (self.outputFolder+name+'.wav')
+    
+    def removeClicks(self, file):
+    
+        samplerate, data = scipy.io.wavfile.read(file)
+        length = data.shape[0] / samplerate
+        time = np.linspace(0., length, data.shape[0])
+
+        #Get right channel data
+        a = data[:, 1]
+        zc_idxs = np.where(np.diff(np.sign(a)))[0]
+        right_t_zero = []
+        for zc_i in zc_idxs:
+            t1 = time[zc_i]
+            t2 = time[zc_i + 1]
+            a1 = a[zc_i]
+            a2 = a[zc_i + 1]
+            right_t_zero.append(t1 + (0 - a1) * ((t2 - t1) / (a2 - a1)))
+        plt.plot(time, a, label="Right channel")
+        plt.plot(right_t_zero, np.zeros((len(right_t_zero), 1)), 'o')
+        
+        appendable = AudioSegment.from_wav(file)
+        fullLength = len(appendable)
+        appendable = appendable[:right_t_zero[-1]*1000]
+        appendable = appendable + AudioSegment.silent(duration=(fullLength-(right_t_zero[-1]*1000)))
+        appendable = appendable.fade(to_gain=-120, end=right_t_zero[-1]*1000, duration=20)
+        appendable.export(file, format='wav')
+    
+    def sendNotificationToPhone(self, title, description):
+        PushBullet(open(self.currentDirectory+'pushbulletApiKey.txt', 'r').read()).push_note(title, description)

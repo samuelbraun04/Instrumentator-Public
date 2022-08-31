@@ -2,15 +2,15 @@
 
 ### STATUS:
 
-*Instrumentator is in early development. Currently, the script can only generate instrumentals in four pre-specified layouts.*
-
-*Once Instrumentator is fully developed, I will begin developing a process to upload the instrumentals to media platforms.*
+*Instrumentator is in early development. Currently, the script can only generate instrumentals in six pre-specified layouts.*
 
 ### DESCRIPTION:
 
-Instrumentator generates instrumentals from 8 bar loops.
+Instrumentator generates instrumentals and publishes them to a instrumental-selling platform.
 
-Currently, for instrumentator to work, all it needs:
+Instrumentator can work in either Windows or Linux.
+
+Currently, for instrumentator to work, all it needs is:
 
 - An eight bar drum loop labeled with its Key and BPM (Ex: "Cm - 180 BPM")
 - An eight bar melody loop labeled with its Key and BPM (Ex: "D# - 67 BPM")

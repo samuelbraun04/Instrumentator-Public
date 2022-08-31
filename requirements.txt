@@ -1,0 +1,15 @@
+dawdreamer==0.6.9
+google_api_python_client==2.55.0
+google_auth_oauthlib==0.5.2
+librosa==0.9.1
+matplotlib==3.5.2
+moviepy==1.0.3
+numpy==1.22.3
+Pillow==9.2.0
+protobuf==4.21.4
+pushbullet.py==0.9.1
+pydub==0.25.1
+pyloudness==1.1.2
+scipy==1.8.1
+selenium==4.3.0
+webdriver_manager==3.7.0
