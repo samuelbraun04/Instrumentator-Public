@@ -2,7 +2,7 @@
 
 ### STATUS:
 
-*Instrumentator is in early development. Currently, the script can only generate instrumentals in six pre-specified layouts.*
+*Currently, the script can only generate instrumentals in six pre-specified layouts.*
 
 ### DESCRIPTION:
 
